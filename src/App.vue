@@ -334,7 +334,7 @@
 
       <!-- Map Container -->
       <div class="map-wrapper">
-        <div ref="mapContainer" class="map-container"></div>
+        <div ref="mapContainer" class="map-container" ></div>
 
         <!-- Map Controls -->
         <div class="map-controls">
@@ -827,7 +827,7 @@ onUnmounted(() => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #0a0a0a;
+  background: #dcdcdc;
   color: #e5e5e5;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
   overflow: hidden;
