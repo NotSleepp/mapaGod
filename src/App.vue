@@ -634,7 +634,8 @@ const currentCoords = ref({ lat: '-36.5806', lng: '-56.6917' })
 const currentZoom = ref(13)
 const scaleWidth = ref(100)
 const scaleText = ref('1 km')
-const activeBaseLayer = ref('streets')
+// <CHANGE> Cambiar capa base inicial a OpenStreetMap
+const activeBaseLayer = ref('osm')
 const fileInput = ref(null)
 const importedLayers = ref([])
 const notification = ref(null)
@@ -1303,12 +1304,8 @@ const addMeasurementPoint = (coords, type) => {
       map.value.getSource('measurement-line').setData({
         type: 'Feature',
         geometry: {
-          type: type === 'area' && drawingPoints.length >= 3 
-            ? 'Polygon' 
-            : 'LineString',
-          coordinates: type === 'area' && drawingPoints.length >= 3
-            ? [[...drawingPoints, drawingPoints[0]]]
-            : drawingPoints
+          type: 'Polygon', // Changed from LineString to Polygon for area measurement
+          coordinates: [[...drawingPoints, drawingPoints[0]]]
         }
       })
     }
@@ -1823,13 +1820,32 @@ const getRoundNum = (num) => {
 onMounted(() => {
   isLoading.value = true
   
+  // <CHANGE> Configurar mapa con OpenStreetMap y rotación de 90 grados
   map.value = new maplibregl.Map({
     container: mapContainer.value,
-    style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    style: {
+      version: 8,
+      sources: {
+        'osm': {
+          type: 'raster',
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '© OpenStreetMap contributors',
+          maxzoom: 19
+        }
+      },
+      layers: [{
+        id: 'osm',
+        type: 'raster',
+        source: 'osm',
+        minzoom: 0,
+        maxzoom: 19
+      }]
+    },
     center: [-56.6917, -36.5806],
     zoom: 13,
     pitch: 0,
-    bearing: 0,
+    bearing: -90, // Rotación de 90 grados
     attributionControl: false,
     logoPosition: 'bottom-right'
   })
