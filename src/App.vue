@@ -10,8 +10,8 @@
             </svg>
           </div>
           <div class="logo-text">
-            <h1>GIS</h1>
-            <p>Sistema de Información Geográfica</p>
+            <h1>GIS Pro</h1>
+            <p>Sistema Avanzado de Información Geográfica</p>
           </div>
         </div>
         
@@ -28,7 +28,7 @@
 
     <!-- Main Content -->
     <div class="gis-main">
-      <!-- Sidebar Toggle Button - Always visible -->
+      <!-- Sidebar Toggle Button -->
       <button class="sidebar-toggle-external" @click="sidebarCollapsed = !sidebarCollapsed" :class="{ collapsed: sidebarCollapsed }">
         <ChevronLeft v-if="!sidebarCollapsed" :size="20" />
         <ChevronRight v-else :size="20" />
@@ -47,7 +47,6 @@
                 placeholder="Buscar dirección, lugar..." 
                 class="search-input"
                 @keyup.enter="performSearch"
-                @input="performSearch"
               />
               <button v-if="searchQuery" @click="clearSearch" class="clear-btn">
                 <X :size="16" />
@@ -105,7 +104,7 @@
                     <div class="header-icon">
                       <Map :size="16" />
                     </div>
-                    <span>Capas Base</span>
+                    <span>Estilos de Mapa</span>
                   </div>
                   <div class="layer-items">
                     <div 
@@ -123,6 +122,7 @@
                         />
                         <span class="layer-name">{{ layer.name }}</span>
                       </label>
+                      <div class="layer-preview" :style="{ background: layer.preview }"></div>
                     </div>
                   </div>
                 </div>
@@ -132,11 +132,11 @@
                     <div class="header-icon">
                       <Layers :size="16" />
                     </div>
-                    <span>Capas Temáticas</span>
+                    <span>Capas Importadas</span>
                   </div>
                   <div class="layer-items">
                     <div 
-                      v-for="layer in thematicLayers" 
+                      v-for="layer in importedLayers" 
                       :key="layer.id"
                       class="layer-item"
                       :class="{ active: layer.visible }"
@@ -145,17 +145,20 @@
                         <input 
                           type="checkbox" 
                           v-model="layer.visible"
-                          @change="toggleLayer(layer.id)"
+                          @change="toggleImportedLayer(layer.id)"
                         />
                         <span class="layer-name">{{ layer.name }}</span>
                       </label>
                       <button 
-                        class="layer-info-btn"
-                        @click="showLayerInfo(layer)"
-                        title="Información"
+                        class="layer-delete-btn"
+                        @click="deleteImportedLayer(layer.id)"
+                        title="Eliminar"
                       >
-                        <Info :size="14" />
+                        <Trash2 :size="14" />
                       </button>
+                    </div>
+                    <div v-if="importedLayers.length === 0" class="empty-hint">
+                      No hay capas importadas
                     </div>
                   </div>
                 </div>
@@ -168,6 +171,41 @@
                   <span>Herramientas</span>
                 </h3>
                 
+                <div class="tool-group">
+                  <h4 class="tool-group-title">Importar/Exportar</h4>
+                  
+                  <button class="tool-btn" @click="triggerFileImport">
+                    <div class="tool-icon">
+                      <Upload :size="18" />
+                    </div>
+                    <div class="tool-content">
+                      <div class="tool-name">Importar Archivo</div>
+                      <div class="tool-desc">GeoJSON, KML, GPX</div>
+                    </div>
+                  </button>
+                  <input 
+                    ref="fileInput" 
+                    type="file" 
+                    accept=".geojson,.json,.kml,.gpx" 
+                    @change="handleFileImport"
+                    style="display: none"
+                  />
+                  
+                  <button 
+                    class="tool-btn"
+                    @click="exportData"
+                    :disabled="drawnFeatures.length === 0 && importedLayers.length === 0"
+                  >
+                    <div class="tool-icon">
+                      <Download :size="18" />
+                    </div>
+                    <div class="tool-content">
+                      <div class="tool-name">Exportar GeoJSON</div>
+                      <div class="tool-desc">Guardar datos del mapa</div>
+                    </div>
+                  </button>
+                </div>
+
                 <div class="tool-group">
                   <h4 class="tool-group-title">Medición</h4>
                   <button 
@@ -225,7 +263,7 @@
                     </div>
                     <div class="tool-content">
                       <div class="tool-name">Línea</div>
-                      <div class="tool-desc">Dibujar línea</div>
+                      <div class="tool-desc">Dibujar línea o ruta</div>
                     </div>
                   </button>
                   
@@ -256,10 +294,24 @@
                       <div class="tool-desc">Dibujar círculo</div>
                     </div>
                   </button>
+
+                  <button 
+                    class="tool-btn danger"
+                    @click="clearAllDrawings"
+                    :disabled="drawnFeatures.length === 0"
+                  >
+                    <div class="tool-icon">
+                      <Trash2 :size="18" />
+                    </div>
+                    <div class="tool-content">
+                      <div class="tool-name">Limpiar Dibujos</div>
+                      <div class="tool-desc">Eliminar todos los dibujos</div>
+                    </div>
+                  </button>
                 </div>
 
                 <div v-if="measurements.length > 0" class="measurements-list">
-                  <h4 class="tool-group-title">Mediciones</h4>
+                  <h4 class="tool-group-title">Mediciones Recientes</h4>
                   <div 
                     v-for="(measurement, index) in measurements" 
                     :key="index"
@@ -273,6 +325,26 @@
                       <X :size="14" />
                     </button>
                   </div>
+                  <button class="clear-measurements-btn" @click="clearMeasurements">
+                    Limpiar todas
+                  </button>
+                </div>
+
+                <div v-if="drawnFeatures.length > 0" class="features-list">
+                  <h4 class="tool-group-title">Elementos Dibujados ({{ drawnFeatures.length }})</h4>
+                  <div 
+                    v-for="(feature, index) in drawnFeatures" 
+                    :key="feature.id"
+                    class="feature-item"
+                  >
+                    <div class="feature-info">
+                      <span class="feature-type">{{ getFeatureTypeName(feature.geometry.type) }}</span>
+                      <span class="feature-id">#{{ index + 1 }}</span>
+                    </div>
+                    <button class="feature-delete" @click="deleteFeature(feature.id)">
+                      <X :size="14" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -283,20 +355,50 @@
                   <span>Leyenda</span>
                 </h3>
                 
-                <div v-for="layer in thematicLayers.filter(l => l.visible)" :key="layer.id" class="legend-group">
-                  <h4 class="legend-title">{{ layer.name }}</h4>
+                <div class="legend-group">
+                  <h4 class="legend-title">Elementos Dibujados</h4>
                   <div class="legend-items">
-                    <div v-for="item in layer.legend" :key="item.label" class="legend-item">
-                      <div class="legend-color" :style="{ backgroundColor: item.color }"></div>
-                      <span class="legend-label">{{ item.label }}</span>
+                    <div class="legend-item">
+                      <div class="legend-color" style="background: #3b82f6;"></div>
+                      <span class="legend-label">Puntos</span>
+                    </div>
+                    <div class="legend-item">
+                      <div class="legend-color" style="background: #8b5cf6;"></div>
+                      <span class="legend-label">Líneas</span>
+                    </div>
+                    <div class="legend-item">
+                      <div class="legend-color" style="background: #ec4899;"></div>
+                      <span class="legend-label">Polígonos</span>
+                    </div>
+                    <div class="legend-item">
+                      <div class="legend-color" style="background: #f59e0b;"></div>
+                      <span class="legend-label">Círculos</span>
                     </div>
                   </div>
                 </div>
 
-                <div v-if="thematicLayers.filter(l => l.visible).length === 0" class="empty-state">
-                  <Map :size="48" class="empty-icon" />
-                  <p>No hay capas visibles</p>
-                  <span class="empty-hint">Activa capas desde la pestaña "Capas"</span>
+                <div class="legend-group">
+                  <h4 class="legend-title">Mediciones</h4>
+                  <div class="legend-items">
+                    <div class="legend-item">
+                      <div class="legend-color" style="background: #10b981;"></div>
+                      <span class="legend-label">Distancia</span>
+                    </div>
+                    <div class="legend-item">
+                      <div class="legend-color" style="background: #06b6d4;"></div>
+                      <span class="legend-label">Área</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="importedLayers.filter(l => l.visible).length > 0" class="legend-group">
+                  <h4 class="legend-title">Capas Importadas</h4>
+                  <div class="legend-items">
+                    <div v-for="layer in importedLayers.filter(l => l.visible)" :key="layer.id" class="legend-item">
+                      <div class="legend-color" :style="{ background: layer.color }"></div>
+                      <span class="legend-label">{{ layer.name }}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -326,6 +428,22 @@
                   <p>Sin selección</p>
                   <span class="empty-hint">Haz clic en un elemento del mapa</span>
                 </div>
+
+                <div class="info-stats">
+                  <h4 class="stats-title">Estadísticas del Mapa</h4>
+                  <div class="stat-item">
+                    <span class="stat-label">Elementos dibujados</span>
+                    <span class="stat-value">{{ drawnFeatures.length }}</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">Capas importadas</span>
+                    <span class="stat-value">{{ importedLayers.length }}</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">Mediciones</span>
+                    <span class="stat-value">{{ measurements.length }}</span>
+                  </div>
+                </div>
               </div>
             </transition>
           </div>
@@ -334,7 +452,21 @@
 
       <!-- Map Container -->
       <div class="map-wrapper">
-        <div ref="mapContainer" class="map-container" ></div>
+        <div ref="mapContainer" class="map-container"></div>
+
+        <!-- Active Tool Indicator -->
+        <transition name="fade">
+          <div v-if="activeTool" class="active-tool-indicator">
+            <div class="tool-indicator-content">
+              <component :is="getToolIcon(activeTool)" :size="20" />
+              <span>{{ getToolName(activeTool) }}</span>
+              <button @click="deactivateTool" class="tool-cancel">
+                <X :size="16" />
+              </button>
+            </div>
+            <div class="tool-hint">{{ getToolHint(activeTool) }}</div>
+          </div>
+        </transition>
 
         <!-- Map Controls -->
         <div class="map-controls">
@@ -361,6 +493,14 @@
               title="Vista 3D"
             >
               <Box :size="20" />
+            </button>
+            <button 
+              class="control-btn"
+              :class="{ active: showTerrain }"
+              @click="toggleTerrain"
+              title="Terreno 3D"
+            >
+              <Mountain :size="20" />
             </button>
             <button class="control-btn" @click="printMap" title="Imprimir">
               <Printer :size="20" />
@@ -402,6 +542,14 @@
             <p>Cargando mapa...</p>
           </div>
         </transition>
+
+        <!-- Notification Toast -->
+        <transition name="slide-up">
+          <div v-if="notification" class="notification-toast" :class="notification.type">
+            <component :is="notification.icon" :size="20" />
+            <span>{{ notification.message }}</span>
+          </div>
+        </transition>
       </div>
     </div>
 
@@ -410,7 +558,7 @@
       <div v-if="showHelp" class="modal-overlay" @click="showHelp = false">
         <div class="modal-content" @click.stop>
           <div class="modal-header">
-            <h2>Ayuda - Sistema GIS</h2>
+            <h2>Ayuda - Sistema GIS Pro</h2>
             <button class="modal-close" @click="showHelp = false">
               <X :size="24" />
             </button>
@@ -421,15 +569,32 @@
               <ul>
                 <li>Arrastra el mapa para moverte</li>
                 <li>Usa la rueda del mouse para hacer zoom</li>
-                <li>Mantén Shift y arrastra para rotar</li>
+                <li>Mantén Ctrl y arrastra para rotar el mapa</li>
+                <li>Mantén Shift y arrastra para inclinar (vista 3D)</li>
               </ul>
             </div>
             <div class="help-section">
-              <h3>Herramientas</h3>
+              <h3>Herramientas de Dibujo</h3>
               <ul>
-                <li>Medir: Calcula distancias y áreas</li>
-                <li>Dibujar: Agrega marcadores y formas</li>
-                <li>Capas: Activa/desactiva información</li>
+                <li><strong>Punto:</strong> Haz clic en el mapa para agregar un marcador</li>
+                <li><strong>Línea:</strong> Haz clic para agregar puntos, doble clic para finalizar</li>
+                <li><strong>Polígono:</strong> Haz clic para agregar vértices, doble clic para cerrar</li>
+                <li><strong>Círculo:</strong> Haz clic en el centro y arrastra para definir el radio</li>
+              </ul>
+            </div>
+            <div class="help-section">
+              <h3>Medición</h3>
+              <ul>
+                <li><strong>Distancia:</strong> Haz clic en puntos para medir la distancia total</li>
+                <li><strong>Área:</strong> Dibuja un polígono para calcular su área</li>
+              </ul>
+            </div>
+            <div class="help-section">
+              <h3>Importar/Exportar</h3>
+              <ul>
+                <li>Importa archivos GeoJSON, KML o GPX con tus datos</li>
+                <li>Exporta todos tus dibujos y capas como GeoJSON</li>
+                <li>Los archivos importados aparecen como capas que puedes activar/desactivar</li>
               </ul>
             </div>
           </div>
@@ -446,27 +611,40 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { 
   Search, X, MapPin, Layers, Map, Info, HelpCircle, Maximize2,
   ChevronLeft, ChevronRight, Ruler, Square, Minus, Pentagon,
-  Circle, Activity, Plus, Home, Navigation, Box, Printer, Share2
+  Circle, Activity, Plus, Home, Navigation, Box, Printer, Share2,
+  Upload, Download, Trash2, Mountain, CheckCircle, AlertCircle
 } from 'lucide-vue-next'
 
 // State
 const mapContainer = ref(null)
 const map = ref(null)
 const sidebarCollapsed = ref(false)
-const activeTab = ref('layers')
+const activeTab = ref('tools')
 const searchQuery = ref('')
 const searchResults = ref([])
 const activeTool = ref(null)
 const measurements = ref([])
+const drawnFeatures = ref([])
 const selectedFeature = ref(null)
 const showHelp = ref(false)
 const isLoading = ref(true)
 const show3D = ref(false)
+const showTerrain = ref(false)
 const currentCoords = ref({ lat: '-36.5806', lng: '-56.6917' })
 const currentZoom = ref(13)
 const scaleWidth = ref(100)
 const scaleText = ref('1 km')
 const activeBaseLayer = ref('streets')
+const fileInput = ref(null)
+const importedLayers = ref([])
+const notification = ref(null)
+
+// Drawing state
+let drawingPoints = []
+let drawingLine = null
+let drawingPolygon = null
+let measurementMarkers = []
+let currentMeasurementLine = null
 
 // Tabs configuration
 const tabs = [
@@ -476,68 +654,74 @@ const tabs = [
   { id: 'info', label: 'Info', icon: Info }
 ]
 
-// Base layers
+// Base layers with actual working styles
 const baseLayers = [
-  { id: 'streets', name: 'Calles', url: 'https://api.maptiler.com/maps/streets-v2/style.json?key=get_your_own_OpIi9ZULNHzrESv6T2vL' },
-  { id: 'satellite', name: 'Satélite', url: 'https://api.maptiler.com/maps/hybrid/style.json?key=get_your_own_OpIi9ZULNHzrESv6T2vL' },
-  { id: 'terrain', name: 'Terreno', url: 'https://api.maptiler.com/maps/outdoor-v2/style.json?key=get_your_own_OpIi9ZULNHzrESv6T2vL' },
-  { id: 'dark', name: 'Oscuro', url: 'https://api.maptiler.com/maps/dataviz-dark/style.json?key=get_your_own_OpIi9ZULNHzrESv6T2vL' }
+  { 
+    id: 'streets', 
+    name: 'Calles', 
+    url: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    preview: 'linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%)'
+  },
+  { 
+    id: 'satellite', 
+    name: 'Satélite', 
+    url: 'satellite',
+    preview: 'linear-gradient(135deg, #1a5f3f 0%, #0d3a24 100%)'
+  },
+  { 
+    id: 'dark', 
+    name: 'Oscuro', 
+    url: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+    preview: 'linear-gradient(135deg, #2d3748 0%, #1a202c 100%)'
+  },
+  { 
+    id: 'terrain', 
+    name: 'Terreno', 
+    url: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    preview: 'linear-gradient(135deg, #d4e5d4 0%, #a8c5a8 100%)'
+  },
+  { 
+    id: 'osm', 
+    name: 'OpenStreetMap', 
+    url: 'osm',
+    preview: 'linear-gradient(135deg, #f2efe9 0%, #c8c4b7 100%)'
+  }
 ]
 
-// Thematic layers
-const thematicLayers = ref([
-  { 
-    id: 'schools', 
-    name: 'Escuelas', 
-    visible: true,
-    legend: [
-      { color: '#3b82f6', label: 'Escuela Primaria' },
-      { color: '#8b5cf6', label: 'Escuela Secundaria' },
-      { color: '#ec4899', label: 'Universidad' }
-    ]
-  },
-  { 
-    id: 'hospitals', 
-    name: 'Hospitales', 
-    visible: false,
-    legend: [
-      { color: '#ef4444', label: 'Hospital General' },
-      { color: '#f97316', label: 'Clínica' }
-    ]
-  },
-  { 
-    id: 'parks', 
-    name: 'Parques', 
-    visible: false,
-    legend: [
-      { color: '#22c55e', label: 'Parque Público' },
-      { color: '#84cc16', label: 'Reserva Natural' }
-    ]
-  }
-])
-
 // Methods
-const performSearch = () => {
+const showNotification = (message, type = 'success') => {
+  notification.value = {
+    message,
+    type,
+    icon: type === 'success' ? CheckCircle : AlertCircle
+  }
+  setTimeout(() => {
+    notification.value = null
+  }, 3000)
+}
+
+const performSearch = async () => {
   if (!searchQuery.value.trim()) {
     searchResults.value = []
     return
   }
   
-  // Simulated search results
-  searchResults.value = [
-    {
-      id: 1,
-      name: 'Plaza Principal',
-      address: 'Centro, Buenos Aires',
-      coords: [-56.6917, -36.5806]
-    },
-    {
-      id: 2,
-      name: 'Parque Central',
-      address: 'Zona Norte, Buenos Aires',
-      coords: [-56.6800, -36.5700]
-    }
-  ]
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery.value)}&limit=5`
+    )
+    const data = await response.json()
+    
+    searchResults.value = data.map((item, index) => ({
+      id: index,
+      name: item.display_name.split(',')[0],
+      address: item.display_name,
+      coords: [parseFloat(item.lon), parseFloat(item.lat)]
+    }))
+  } catch (error) {
+    console.error('Search error:', error)
+    searchResults.value = []
+  }
 }
 
 const clearSearch = () => {
@@ -552,44 +736,950 @@ const selectSearchResult = (result) => {
       zoom: 15,
       duration: 1500
     })
+    
+    new maplibregl.Marker({ color: '#ef4444' })
+      .setLngLat(result.coords)
+      .setPopup(
+        new maplibregl.Popup({ offset: 25 })
+          .setHTML(`<div style="padding: 8px; color: #000;"><strong>${result.name}</strong><br/><small>${result.address}</small></div>`)
+      )
+      .addTo(map.value)
   }
   searchResults.value = []
 }
 
 const changeBaseLayer = (layerId) => {
   const layer = baseLayers.find(l => l.id === layerId)
-  if (layer && map.value) {
-    // In a real implementation, you would change the map style here
-    console.log('Changing base layer to:', layer.name)
+  if (!layer || !map.value) return
+  
+  isLoading.value = true
+  
+  if (layerId === 'osm') {
+    map.value.setStyle({
+      version: 8,
+      sources: {
+        'osm': {
+          type: 'raster',
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '© OpenStreetMap contributors',
+          maxzoom: 19
+        }
+      },
+      layers: [{
+        id: 'osm',
+        type: 'raster',
+        source: 'osm',
+        minzoom: 0,
+        maxzoom: 19
+      }]
+    })
+  } else if (layerId === 'satellite') {
+    map.value.setStyle({
+      version: 8,
+      sources: {
+        'satellite': {
+          type: 'raster',
+          tiles: [
+            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+          ],
+          tileSize: 256,
+          attribution: 'Esri, DigitalGlobe, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community'
+        }
+      },
+      layers: [{
+        id: 'satellite',
+        type: 'raster',
+        source: 'satellite'
+      }]
+    })
+  } else {
+    map.value.setStyle(layer.url)
+  }
+  
+  map.value.once('styledata', () => {
+    isLoading.value = false
+    reloadAllLayers()
+    showNotification(`Estilo cambiado a ${layer.name}`)
+  })
+}
+
+const reloadAllLayers = () => {
+  // Reload drawn features
+  if (map.value.getSource('drawn-features')) {
+    map.value.getSource('drawn-features').setData({
+      type: 'FeatureCollection',
+      features: drawnFeatures.value
+    })
+  } else {
+    addDrawnFeaturesSource()
+  }
+  
+  // Reload imported layers
+  importedLayers.value.forEach(layer => {
+    if (layer.visible) {
+      addImportedLayerToMap(layer)
+    }
+  })
+}
+
+const addDrawnFeaturesSource = () => {
+  if (!map.value.getSource('drawn-features')) {
+    map.value.addSource('drawn-features', {
+      type: 'geojson',
+      data: {
+        type: 'FeatureCollection',
+        features: drawnFeatures.value
+      }
+    })
+    
+    // Add layers for different geometry types
+    map.value.addLayer({
+      id: 'drawn-polygons',
+      type: 'fill',
+      source: 'drawn-features',
+      filter: ['==', '$type', 'Polygon'],
+      paint: {
+        'fill-color': '#ec4899',
+        'fill-opacity': 0.3
+      }
+    })
+    
+    map.value.addLayer({
+      id: 'drawn-polygons-outline',
+      type: 'line',
+      source: 'drawn-features',
+      filter: ['==', '$type', 'Polygon'],
+      paint: {
+        'line-color': '#ec4899',
+        'line-width': 2
+      }
+    })
+    
+    map.value.addLayer({
+      id: 'drawn-lines',
+      type: 'line',
+      source: 'drawn-features',
+      filter: ['==', '$type', 'LineString'],
+      paint: {
+        'line-color': '#8b5cf6',
+        'line-width': 3
+      }
+    })
+    
+    map.value.addLayer({
+      id: 'drawn-points',
+      type: 'circle',
+      source: 'drawn-features',
+      filter: ['==', '$type', 'Point'],
+      paint: {
+        'circle-radius': 8,
+        'circle-color': '#3b82f6',
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#ffffff'
+      }
+    })
   }
 }
 
-const toggleLayer = (layerId) => {
-  const layer = thematicLayers.value.find(l => l.id === layerId)
-  if (layer && map.value) {
-    console.log('Toggling layer:', layer.name, layer.visible)
+const toggleImportedLayer = (layerId) => {
+  const layer = importedLayers.value.find(l => l.id === layerId)
+  if (!layer) return
+  
+  if (layer.visible) {
+    addImportedLayerToMap(layer)
+  } else {
+    removeImportedLayerFromMap(layer)
   }
 }
 
-const showLayerInfo = (layer) => {
-  selectedFeature.value = {
-    name: layer.name,
-    properties: {
-      'Tipo': 'Capa Temática',
-      'Estado': layer.visible ? 'Visible' : 'Oculta',
-      'Elementos': Math.floor(Math.random() * 100) + 10
+const addImportedLayerToMap = (layer) => {
+  if (!map.value) return
+  
+  const sourceId = `imported-${layer.id}`
+  const layerId = `imported-layer-${layer.id}`
+  
+  if (!map.value.getSource(sourceId)) {
+    map.value.addSource(sourceId, {
+      type: 'geojson',
+      data: layer.data
+    })
+    
+    // Determine layer type based on geometry
+    const firstFeature = layer.data.features[0]
+    if (firstFeature) {
+      const geomType = firstFeature.geometry.type
+      
+      if (geomType === 'Point' || geomType === 'MultiPoint') {
+        map.value.addLayer({
+          id: layerId,
+          type: 'circle',
+          source: sourceId,
+          paint: {
+            'circle-radius': 6,
+            'circle-color': layer.color,
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#ffffff'
+          }
+        })
+      } else if (geomType === 'LineString' || geomType === 'MultiLineString') {
+        map.value.addLayer({
+          id: layerId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': layer.color,
+            'line-width': 3
+          }
+        })
+      } else if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
+        map.value.addLayer({
+          id: `${layerId}-fill`,
+          type: 'fill',
+          source: sourceId,
+          paint: {
+            'fill-color': layer.color,
+            'fill-opacity': 0.3
+          }
+        })
+        map.value.addLayer({
+          id: `${layerId}-outline`,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': layer.color,
+            'line-width': 2
+          }
+        })
+      }
     }
   }
-  activeTab.value = 'info'
+}
+
+const removeImportedLayerFromMap = (layer) => {
+  if (!map.value) return
+  
+  const layerId = `imported-layer-${layer.id}`
+  
+  if (map.value.getLayer(layerId)) {
+    map.value.removeLayer(layerId)
+  }
+  if (map.value.getLayer(`${layerId}-fill`)) {
+    map.value.removeLayer(`${layerId}-fill`)
+  }
+  if (map.value.getLayer(`${layerId}-outline`)) {
+    map.value.removeLayer(`${layerId}-outline`)
+  }
+}
+
+const deleteImportedLayer = (layerId) => {
+  const layer = importedLayers.value.find(l => l.id === layerId)
+  if (layer) {
+    removeImportedLayerFromMap(layer)
+    const sourceId = `imported-${layer.id}`
+    if (map.value.getSource(sourceId)) {
+      map.value.removeSource(sourceId)
+    }
+  }
+  importedLayers.value = importedLayers.value.filter(l => l.id !== layerId)
+  showNotification('Capa eliminada')
 }
 
 const activateTool = (tool) => {
-  activeTool.value = activeTool.value === tool ? null : tool
-  console.log('Tool activated:', tool)
+  if (activeTool.value === tool) {
+    deactivateTool()
+    return
+  }
+  
+  deactivateTool()
+  activeTool.value = tool
+  map.value.getCanvas().style.cursor = 'crosshair'
+  
+  if (tool === 'measure-distance' || tool === 'measure-area') {
+    drawingPoints = []
+    measurementMarkers = []
+  }
+}
+
+const deactivateTool = () => {
+  activeTool.value = null
+  map.value.getCanvas().style.cursor = ''
+  cleanupDrawing()
+}
+
+const cleanupDrawing = () => {
+  drawingPoints = []
+  
+  if (drawingLine) {
+    drawingLine.remove()
+    drawingLine = null
+  }
+  
+  if (drawingPolygon) {
+    drawingPolygon.remove()
+    drawingPolygon = null
+  }
+  
+  if (currentMeasurementLine && map.value.getSource('measurement-line')) {
+    map.value.getSource('measurement-line').setData({
+      type: 'FeatureCollection',
+      features: []
+    })
+  }
+  
+  measurementMarkers.forEach(marker => marker.remove())
+  measurementMarkers = []
+}
+
+const handleMapClick = (e) => {
+  if (!activeTool.value) return
+  
+  const coords = [e.lngLat.lng, e.lngLat.lat]
+  
+  switch (activeTool.value) {
+    case 'draw-point':
+      addPoint(coords)
+      deactivateTool()
+      break
+    case 'draw-line':
+      addLinePoint(coords)
+      break
+    case 'draw-polygon':
+      addPolygonPoint(coords)
+      break
+    case 'measure-distance':
+      addMeasurementPoint(coords, 'distance')
+      break
+    case 'measure-area':
+      addMeasurementPoint(coords, 'area')
+      break
+  }
+}
+
+const handleMapDblClick = (e) => {
+  if (!activeTool.value) return
+  
+  e.preventDefault()
+  
+  if (activeTool.value === 'draw-line') {
+    finishLine()
+  } else if (activeTool.value === 'draw-polygon') {
+    finishPolygon()
+  } else if (activeTool.value === 'measure-distance') {
+    finishMeasurement('distance')
+  } else if (activeTool.value === 'measure-area') {
+    finishMeasurement('area')
+  }
+}
+
+const addPoint = (coords) => {
+  const feature = {
+    id: `point-${Date.now()}`,
+    type: 'Feature',
+    geometry: {
+      type: 'Point',
+      coordinates: coords
+    },
+    properties: {
+      type: 'point',
+      createdAt: new Date().toISOString()
+    }
+  }
+  
+  drawnFeatures.value.push(feature)
+  updateDrawnFeatures()
+  showNotification('Punto agregado')
+}
+
+const addLinePoint = (coords) => {
+  drawingPoints.push(coords)
+  
+  if (drawingPoints.length === 1) {
+    // First point
+    const el = document.createElement('div')
+    el.className = 'drawing-marker'
+    el.style.width = '10px'
+    el.style.height = '10px'
+    el.style.borderRadius = '50%'
+    el.style.background = '#8b5cf6'
+    el.style.border = '2px solid white'
+    
+    new maplibregl.Marker({ element: el })
+      .setLngLat(coords)
+      .addTo(map.value)
+  } else {
+    // Update line
+    if (!map.value.getSource('temp-line')) {
+      map.value.addSource('temp-line', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: drawingPoints
+          }
+        }
+      })
+      
+      map.value.addLayer({
+        id: 'temp-line-layer',
+        type: 'line',
+        source: 'temp-line',
+        paint: {
+          'line-color': '#8b5cf6',
+          'line-width': 3,
+          'line-dasharray': [2, 2]
+        }
+      })
+    } else {
+      map.value.getSource('temp-line').setData({
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: drawingPoints
+        }
+      })
+    }
+  }
+}
+
+const finishLine = () => {
+  if (drawingPoints.length < 2) {
+    showNotification('Se necesitan al menos 2 puntos', 'error')
+    return
+  }
+  
+  const feature = {
+    id: `line-${Date.now()}`,
+    type: 'Feature',
+    geometry: {
+      type: 'LineString',
+      coordinates: drawingPoints
+    },
+    properties: {
+      type: 'line',
+      createdAt: new Date().toISOString()
+    }
+  }
+  
+  drawnFeatures.value.push(feature)
+  updateDrawnFeatures()
+  
+  // Clean up temp line
+  if (map.value.getLayer('temp-line-layer')) {
+    map.value.removeLayer('temp-line-layer')
+    map.value.removeSource('temp-line')
+  }
+  
+  deactivateTool()
+  showNotification('Línea completada')
+}
+
+const addPolygonPoint = (coords) => {
+  drawingPoints.push(coords)
+  
+  if (drawingPoints.length >= 3) {
+    const polygonCoords = [...drawingPoints, drawingPoints[0]]
+    
+    if (!map.value.getSource('temp-polygon')) {
+      map.value.addSource('temp-polygon', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [polygonCoords]
+          }
+        }
+      })
+      
+      map.value.addLayer({
+        id: 'temp-polygon-fill',
+        type: 'fill',
+        source: 'temp-polygon',
+        paint: {
+          'fill-color': '#ec4899',
+          'fill-opacity': 0.3
+        }
+      })
+      
+      map.value.addLayer({
+        id: 'temp-polygon-outline',
+        type: 'line',
+        source: 'temp-polygon',
+        paint: {
+          'line-color': '#ec4899',
+          'line-width': 2,
+          'line-dasharray': [2, 2]
+        }
+      })
+    } else {
+      map.value.getSource('temp-polygon').setData({
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [polygonCoords]
+        }
+      })
+    }
+  }
+}
+
+const finishPolygon = () => {
+  if (drawingPoints.length < 3) {
+    showNotification('Se necesitan al menos 3 puntos', 'error')
+    return
+  }
+  
+  const feature = {
+    id: `polygon-${Date.now()}`,
+    type: 'Feature',
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[...drawingPoints, drawingPoints[0]]]
+    },
+    properties: {
+      type: 'polygon',
+      createdAt: new Date().toISOString()
+    }
+  }
+  
+  drawnFeatures.value.push(feature)
+  updateDrawnFeatures()
+  
+  // Clean up temp polygon
+  if (map.value.getLayer('temp-polygon-fill')) {
+    map.value.removeLayer('temp-polygon-fill')
+    map.value.removeLayer('temp-polygon-outline')
+    map.value.removeSource('temp-polygon')
+  }
+  
+  deactivateTool()
+  showNotification('Polígono completado')
+}
+
+const addMeasurementPoint = (coords, type) => {
+  drawingPoints.push(coords)
+  
+  const el = document.createElement('div')
+  el.className = 'measurement-marker'
+  el.style.width = '12px'
+  el.style.height = '12px'
+  el.style.borderRadius = '50%'
+  el.style.background = type === 'distance' ? '#10b981' : '#06b6d4'
+  el.style.border = '2px solid white'
+  el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)'
+  
+  const marker = new maplibregl.Marker({ element: el })
+    .setLngLat(coords)
+    .addTo(map.value)
+  
+  measurementMarkers.push(marker)
+  
+  if (drawingPoints.length > 1) {
+    if (!map.value.getSource('measurement-line')) {
+      map.value.addSource('measurement-line', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: drawingPoints
+          }
+        }
+      })
+      
+      map.value.addLayer({
+        id: 'measurement-line-layer',
+        type: 'line',
+        source: 'measurement-line',
+        paint: {
+          'line-color': type === 'distance' ? '#10b981' : '#06b6d4',
+          'line-width': 2,
+          'line-dasharray': [4, 2]
+        }
+      })
+    } else {
+      map.value.getSource('measurement-line').setData({
+        type: 'Feature',
+        geometry: {
+          type: type === 'area' && drawingPoints.length >= 3 
+            ? 'Polygon' 
+            : 'LineString',
+          coordinates: type === 'area' && drawingPoints.length >= 3
+            ? [[...drawingPoints, drawingPoints[0]]]
+            : drawingPoints
+        }
+      })
+    }
+  }
+}
+
+const finishMeasurement = (type) => {
+  if (type === 'distance' && drawingPoints.length < 2) {
+    showNotification('Se necesitan al menos 2 puntos', 'error')
+    return
+  }
+  
+  if (type === 'area' && drawingPoints.length < 3) {
+    showNotification('Se necesitan al menos 3 puntos', 'error')
+    return
+  }
+  
+  let value
+  if (type === 'distance') {
+    value = calculateDistance(drawingPoints)
+  } else {
+    value = calculateArea(drawingPoints)
+  }
+  
+  measurements.value.push({
+    type: type === 'distance' ? 'Distancia' : 'Área',
+    value,
+    timestamp: new Date().toISOString()
+  })
+  
+  deactivateTool()
+  showNotification(`${type === 'distance' ? 'Distancia' : 'Área'} medida: ${value}`)
+}
+
+const calculateDistance = (points) => {
+  let total = 0
+  for (let i = 0; i < points.length - 1; i++) {
+    total += getDistanceBetweenPoints(points[i], points[i + 1])
+  }
+  
+  if (total < 1000) {
+    return `${total.toFixed(2)} m`
+  } else {
+    return `${(total / 1000).toFixed(2)} km`
+  }
+}
+
+const calculateArea = (points) => {
+  const polygon = [...points, points[0]]
+  let area = 0
+  
+  for (let i = 0; i < polygon.length - 1; i++) {
+    const p1 = polygon[i]
+    const p2 = polygon[i + 1]
+    area += (p2[0] - p1[0]) * (p2[1] + p1[1])
+  }
+  
+  area = Math.abs(area / 2)
+  
+  // Convert to square meters (approximate)
+  const areaInMeters = area * 111320 * 111320 * Math.cos(points[0][1] * Math.PI / 180)
+  
+  if (areaInMeters < 10000) {
+    return `${areaInMeters.toFixed(2)} m²`
+  } else if (areaInMeters < 1000000) {
+    return `${(areaInMeters / 10000).toFixed(2)} ha`
+  } else {
+    return `${(areaInMeters / 1000000).toFixed(2)} km²`
+  }
+}
+
+const getDistanceBetweenPoints = (p1, p2) => {
+  const R = 6371000 // Earth radius in meters
+  const lat1 = p1[1] * Math.PI / 180
+  const lat2 = p2[1] * Math.PI / 180
+  const deltaLat = (p2[1] - p1[1]) * Math.PI / 180
+  const deltaLng = (p2[0] - p1[0]) * Math.PI / 180
+  
+  const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+            Math.cos(lat1) * Math.cos(lat2) *
+            Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2)
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  
+  return R * c
+}
+
+const updateDrawnFeatures = () => {
+  if (map.value.getSource('drawn-features')) {
+    map.value.getSource('drawn-features').setData({
+      type: 'FeatureCollection',
+      features: drawnFeatures.value
+    })
+  }
+}
+
+const deleteFeature = (featureId) => {
+  drawnFeatures.value = drawnFeatures.value.filter(f => f.id !== featureId)
+  updateDrawnFeatures()
+  showNotification('Elemento eliminado')
+}
+
+const clearAllDrawings = () => {
+  if (confirm('¿Estás seguro de que quieres eliminar todos los dibujos?')) {
+    drawnFeatures.value = []
+    updateDrawnFeatures()
+    showNotification('Todos los dibujos eliminados')
+  }
 }
 
 const deleteMeasurement = (index) => {
   measurements.value.splice(index, 1)
+}
+
+const clearMeasurements = () => {
+  measurements.value = []
+  showNotification('Mediciones eliminadas')
+}
+
+const triggerFileImport = () => {
+  fileInput.value.click()
+}
+
+const handleFileImport = async (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  
+  try {
+    const text = await file.text()
+    let geojson
+    
+    if (file.name.endsWith('.geojson') || file.name.endsWith('.json')) {
+      geojson = JSON.parse(text)
+    } else if (file.name.endsWith('.kml')) {
+      geojson = await convertKMLToGeoJSON(text)
+    } else if (file.name.endsWith('.gpx')) {
+      geojson = await convertGPXToGeoJSON(text)
+    } else {
+      showNotification('Formato de archivo no soportado', 'error')
+      return
+    }
+    
+    // Ensure it's a FeatureCollection
+    if (geojson.type !== 'FeatureCollection') {
+      geojson = {
+        type: 'FeatureCollection',
+        features: [geojson]
+      }
+    }
+    
+    const layer = {
+      id: `layer-${Date.now()}`,
+      name: file.name.replace(/\.[^/.]+$/, ''),
+      data: geojson,
+      visible: true,
+      color: getRandomColor()
+    }
+    
+    importedLayers.value.push(layer)
+    addImportedLayerToMap(layer)
+    
+    // Fit map to imported data
+    const bounds = new maplibregl.LngLatBounds()
+    geojson.features.forEach(feature => {
+      if (feature.geometry.type === 'Point') {
+        bounds.extend(feature.geometry.coordinates)
+      } else if (feature.geometry.type === 'LineString') {
+        feature.geometry.coordinates.forEach(coord => bounds.extend(coord))
+      } else if (feature.geometry.type === 'Polygon') {
+        feature.geometry.coordinates[0].forEach(coord => bounds.extend(coord))
+      }
+    })
+    
+    map.value.fitBounds(bounds, { padding: 50 })
+    showNotification(`Archivo "${file.name}" importado correctamente`)
+    
+  } catch (error) {
+    console.error('Import error:', error)
+    showNotification('Error al importar el archivo', 'error')
+  }
+  
+  event.target.value = ''
+}
+
+const convertKMLToGeoJSON = async (kmlText) => {
+  // Simple KML to GeoJSON converter (basic implementation)
+  const parser = new DOMParser()
+  const kml = parser.parseFromString(kmlText, 'text/xml')
+  const features = []
+  
+  const placemarks = kml.getElementsByTagName('Placemark')
+  for (let i = 0; i < placemarks.length; i++) {
+    const placemark = placemarks[i]
+    const name = placemark.getElementsByTagName('name')[0]?.textContent || `Feature ${i + 1}`
+    
+    const point = placemark.getElementsByTagName('Point')[0]
+    const lineString = placemark.getElementsByTagName('LineString')[0]
+    const polygon = placemark.getElementsByTagName('Polygon')[0]
+    
+    let geometry
+    if (point) {
+      const coords = point.getElementsByTagName('coordinates')[0].textContent.trim().split(',')
+      geometry = {
+        type: 'Point',
+        coordinates: [parseFloat(coords[0]), parseFloat(coords[1])]
+      }
+    } else if (lineString) {
+      const coords = lineString.getElementsByTagName('coordinates')[0].textContent.trim()
+        .split(/\s+/)
+        .map(c => {
+          const parts = c.split(',')
+          return [parseFloat(parts[0]), parseFloat(parts[1])]
+        })
+      geometry = {
+        type: 'LineString',
+        coordinates: coords
+      }
+    } else if (polygon) {
+      const coords = polygon.getElementsByTagName('coordinates')[0].textContent.trim()
+        .split(/\s+/)
+        .map(c => {
+          const parts = c.split(',')
+          return [parseFloat(parts[0]), parseFloat(parts[1])]
+        })
+      geometry = {
+        type: 'Polygon',
+        coordinates: [coords]
+      }
+    }
+    
+    if (geometry) {
+      features.push({
+        type: 'Feature',
+        properties: { name },
+        geometry
+      })
+    }
+  }
+  
+  return {
+    type: 'FeatureCollection',
+    features
+  }
+}
+
+const convertGPXToGeoJSON = async (gpxText) => {
+  // Simple GPX to GeoJSON converter
+  const parser = new DOMParser()
+  const gpx = parser.parseFromString(gpxText, 'text/xml')
+  const features = []
+  
+  // Waypoints
+  const wpts = gpx.getElementsByTagName('wpt')
+  for (let i = 0; i < wpts.length; i++) {
+    const wpt = wpts[i]
+    const name = wpt.getElementsByTagName('name')[0]?.textContent || `Waypoint ${i + 1}`
+    features.push({
+      type: 'Feature',
+      properties: { name },
+      geometry: {
+        type: 'Point',
+        coordinates: [
+          parseFloat(wpt.getAttribute('lon')),
+          parseFloat(wpt.getAttribute('lat'))
+        ]
+      }
+    })
+  }
+  
+  // Tracks
+  const trks = gpx.getElementsByTagName('trk')
+  for (let i = 0; i < trks.length; i++) {
+    const trk = trks[i]
+    const name = trk.getElementsByTagName('name')[0]?.textContent || `Track ${i + 1}`
+    const trkpts = trk.getElementsByTagName('trkpt')
+    const coords = []
+    
+    for (let j = 0; j < trkpts.length; j++) {
+      const pt = trkpts[j]
+      coords.push([
+        parseFloat(pt.getAttribute('lon')),
+        parseFloat(pt.getAttribute('lat'))
+      ])
+    }
+    
+    if (coords.length > 0) {
+      features.push({
+        type: 'Feature',
+        properties: { name },
+        geometry: {
+          type: 'LineString',
+          coordinates: coords
+        }
+      })
+    }
+  }
+  
+  return {
+    type: 'FeatureCollection',
+    features
+  }
+}
+
+const exportData = () => {
+  const data = {
+    type: 'FeatureCollection',
+    features: [
+      ...drawnFeatures.value,
+      ...importedLayers.value.flatMap(layer => layer.data.features)
+    ]
+  }
+  
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `gis-export-${Date.now()}.geojson`
+  a.click()
+  URL.revokeObjectURL(url)
+  
+  showNotification('Datos exportados correctamente')
+}
+
+const getRandomColor = () => {
+  const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#ef4444']
+  return colors[Math.floor(Math.random() * colors.length)]
+}
+
+const getFeatureTypeName = (type) => {
+  const names = {
+    'Point': 'Punto',
+    'LineString': 'Línea',
+    'Polygon': 'Polígono'
+  }
+  return names[type] || type
+}
+
+const getToolIcon = (tool) => {
+  const icons = {
+    'draw-point': MapPin,
+    'draw-line': Minus,
+    'draw-polygon': Pentagon,
+    'draw-circle': Circle,
+    'measure-distance': Ruler,
+    'measure-area': Square
+  }
+  return icons[tool] || Ruler
+}
+
+const getToolName = (tool) => {
+  const names = {
+    'draw-point': 'Dibujar Punto',
+    'draw-line': 'Dibujar Línea',
+    'draw-polygon': 'Dibujar Polígono',
+    'draw-circle': 'Dibujar Círculo',
+    'measure-distance': 'Medir Distancia',
+    'measure-area': 'Medir Área'
+  }
+  return names[tool] || tool
+}
+
+const getToolHint = (tool) => {
+  const hints = {
+    'draw-point': 'Haz clic en el mapa para agregar un punto',
+    'draw-line': 'Haz clic para agregar puntos, doble clic para finalizar',
+    'draw-polygon': 'Haz clic para agregar vértices, doble clic para cerrar',
+    'draw-circle': 'Haz clic en el centro y arrastra para definir el radio',
+    'measure-distance': 'Haz clic en puntos para medir distancia, doble clic para finalizar',
+    'measure-area': 'Haz clic para crear polígono, doble clic para calcular área'
+  }
+  return hints[tool] || ''
 }
 
 const zoomIn = () => {
@@ -610,7 +1700,7 @@ const resetView = () => {
       center: [-56.6917, -36.5806],
       zoom: 13,
       pitch: 0,
-      bearing: -90,
+      bearing: 0,
       duration: 1500
     })
   }
@@ -630,13 +1720,22 @@ const locateUser = () => {
           
           new maplibregl.Marker({ color: '#ef4444' })
             .setLngLat(coords)
+            .setPopup(
+              new maplibregl.Popup({ offset: 25 })
+                .setHTML('<div style="padding: 8px; color: #000;"><strong>Tu ubicación</strong></div>')
+            )
             .addTo(map.value)
+          
+          showNotification('Ubicación encontrada')
         }
       },
       (error) => {
         console.error('Error getting location:', error)
+        showNotification('No se pudo obtener tu ubicación', 'error')
       }
     )
+  } else {
+    showNotification('Geolocalización no disponible', 'error')
   }
 }
 
@@ -650,20 +1749,29 @@ const toggle3D = () => {
   }
 }
 
+const toggleTerrain = () => {
+  showTerrain.value = !showTerrain.value
+  // Terrain 3D would require additional terrain source
+  showNotification(showTerrain.value ? 'Terreno 3D activado' : 'Terreno 3D desactivado')
+}
+
 const printMap = () => {
   window.print()
 }
 
 const shareMap = () => {
-  const url = window.location.href
+  const center = map.value.getCenter()
+  const zoom = map.value.getZoom()
+  const url = `${window.location.origin}${window.location.pathname}#${zoom}/${center.lat.toFixed(4)}/${center.lng.toFixed(4)}`
+  
   if (navigator.share) {
     navigator.share({
-      title: 'GIS Map',
+      title: 'GIS Pro Map',
       url: url
     })
   } else {
     navigator.clipboard.writeText(url)
-    alert('URL copiada al portapapeles')
+    showNotification('URL copiada al portapapeles')
   }
 }
 
@@ -711,71 +1819,25 @@ const getRoundNum = (num) => {
   return pow10 * d
 }
 
-const addSampleMarkers = () => {
-  const markers = [
-    { coords: [-56.6917, -36.5806], color: '#3b82f6', name: 'Ubicación Principal' },
-    { coords: [-56.6800, -36.5700], color: '#8b5cf6', name: 'Punto de Interés 1' },
-    { coords: [-56.7000, -36.5900], color: '#ec4899', name: 'Punto de Interés 2' }
-  ]
-  
-  markers.forEach(marker => {
-    new maplibregl.Marker({ color: marker.color })
-      .setLngLat(marker.coords)
-      .setPopup(
-        new maplibregl.Popup({ offset: 25 })
-          .setHTML(`<div style="padding: 8px;"><strong>${marker.name}</strong></div>`)
-      )
-      .addTo(map.value)
-  })
-}
-
-const addSampleLayers = () => {
-  // Add sample GeoJSON layers here if needed
-  console.log('Sample layers added')
-}
-
 // Initialize map
 onMounted(() => {
   isLoading.value = true
   
-  // Optimized map initialization
   map.value = new maplibregl.Map({
     container: mapContainer.value,
-    style: {
-      version: 8,
-      sources: {
-        'osm': {
-          type: 'raster',
-          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-          tileSize: 256,
-          attribution: '© OpenStreetMap contributors',
-          maxzoom: 19
-        }
-      },
-      layers: [{
-        id: 'osm',
-        type: 'raster',
-        source: 'osm',
-        minzoom: 0,
-        maxzoom: 19
-      }]
-    },
+    style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
     center: [-56.6917, -36.5806],
     zoom: 13,
     pitch: 0,
-    bearing: -90,
-    // Performance optimizations
+    bearing: 0,
     attributionControl: false,
-    logoPosition: 'bottom-right',
-    refreshExpiredTiles: false,
-    fadeDuration: 0,
-    crossSourceCollisions: false
+    logoPosition: 'bottom-right'
   })
 
-  // Remove default controls to avoid duplicates
-  // We're using custom controls instead
+  map.value.addControl(new maplibregl.AttributionControl({
+    compact: true
+  }), 'bottom-right')
 
-  // Update coordinates on mouse move (throttled for performance)
   let coordUpdateTimeout
   map.value.on('mousemove', (e) => {
     clearTimeout(coordUpdateTimeout)
@@ -787,21 +1849,21 @@ onMounted(() => {
     }, 50)
   })
 
-  // Update zoom level
   map.value.on('zoom', () => {
     currentZoom.value = Math.round(map.value.getZoom())
     updateScale()
   })
 
-  // Add sample markers and layers when map loads
   map.value.on('load', () => {
     isLoading.value = false
-    addSampleMarkers()
-    addSampleLayers()
+    addDrawnFeaturesSource()
     updateScale()
+    showNotification('Mapa cargado correctamente')
   })
 
-  // Handle map errors
+  map.value.on('click', handleMapClick)
+  map.value.on('dblclick', handleMapDblClick)
+
   map.value.on('error', (e) => {
     console.error('Map error:', e)
     isLoading.value = false
@@ -827,15 +1889,12 @@ onUnmounted(() => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #dcdcdc;
+  background: #0a0a0a;
   color: #e5e5e5;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
   overflow: hidden;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Header */
 .gis-header {
   background: linear-gradient(180deg, #141414 0%, #0f0f0f 100%);
   border-bottom: 1px solid rgba(59, 130, 246, 0.1);
@@ -845,7 +1904,6 @@ onUnmounted(() => {
   align-items: center;
   z-index: 1000;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(10px);
 }
 
 .header-content {
@@ -871,32 +1929,17 @@ onUnmounted(() => {
   justify-content: center;
   color: white;
   box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.logo-icon:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(59, 130, 246, 0.6);
 }
 
 .logo-text h1 {
-  margin: 0;
   font-size: 22px;
   font-weight: 700;
   color: #f5f5f5;
-  letter-spacing: -0.8px;
-  background: linear-gradient(135deg, #f5f5f5 0%, #a3a3a3 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
 .logo-text p {
-  margin: 2px 0 0 0;
   font-size: 12px;
   color: #737373;
-  font-weight: 500;
-  letter-spacing: 0.3px;
 }
 
 .header-actions {
@@ -915,23 +1958,15 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  backdrop-filter: blur(10px);
+  transition: all 0.25s;
 }
 
 .btn-icon:hover {
   background: rgba(59, 130, 246, 0.15);
   border-color: rgba(59, 130, 246, 0.3);
   color: #3b82f6;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
 }
 
-.btn-icon:active {
-  transform: translateY(0);
-}
-
-/* Main Layout */
 .gis-main {
   flex: 1;
   display: flex;
@@ -939,10 +1974,9 @@ onUnmounted(() => {
   position: relative;
 }
 
-/* External Sidebar Toggle - Always visible */
 .sidebar-toggle-external {
   position: absolute;
-  left: 320px;
+  left: 360px;
   top: 50%;
   transform: translateY(-50%);
   width: 32px;
@@ -957,8 +1991,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   z-index: 1001;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s;
 }
 
 .sidebar-toggle-external.collapsed {
@@ -967,21 +2000,17 @@ onUnmounted(() => {
 
 .sidebar-toggle-external:hover {
   background: rgba(59, 130, 246, 0.15);
-  border-color: rgba(59, 130, 246, 0.4);
   color: #3b82f6;
-  width: 36px;
 }
 
-/* Sidebar */
 .gis-sidebar {
-  width: 320px;
+  width: 360px;
   background: rgba(15, 15, 15, 0.95);
   border-right: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  backdrop-filter: blur(20px);
+  transition: all 0.3s;
   z-index: 100;
 }
 
@@ -997,7 +2026,6 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-/* Search Section */
 .search-section {
   padding: 20px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
@@ -1013,7 +2041,6 @@ onUnmounted(() => {
   position: absolute;
   left: 14px;
   color: #737373;
-  pointer-events: none;
 }
 
 .search-input {
@@ -1029,13 +2056,8 @@ onUnmounted(() => {
 }
 
 .search-input:focus {
-  background: rgba(31, 31, 31, 0.8);
   border-color: rgba(59, 130, 246, 0.3);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.search-input::placeholder {
-  color: #737373;
 }
 
 .clear-btn {
@@ -1051,15 +2073,12 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  transition: all 0.2s;
 }
 
 .clear-btn:hover {
   background: rgba(255, 255, 255, 0.05);
-  color: #e5e5e5;
 }
 
-/* Search Results */
 .search-results {
   margin-top: 12px;
   background: rgba(31, 31, 31, 0.6);
@@ -1080,45 +2099,29 @@ onUnmounted(() => {
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 }
 
-.search-result-item:last-child {
-  border-bottom: none;
-}
-
 .search-result-item:hover {
   background: rgba(59, 130, 246, 0.1);
 }
 
 .result-icon {
   color: #3b82f6;
-  flex-shrink: 0;
 }
 
 .result-info {
   flex: 1;
-  min-width: 0;
 }
 
 .result-name {
   font-size: 14px;
   font-weight: 600;
   color: #e5e5e5;
-  margin-bottom: 2px;
 }
 
 .result-address {
   font-size: 12px;
   color: #737373;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.result-arrow {
-  color: #737373;
-  flex-shrink: 0;
-}
-
-/* Tabs */
 .tabs {
   display: flex;
   padding: 16px 16px 0;
@@ -1141,13 +2144,10 @@ onUnmounted(() => {
   font-weight: 600;
   border-radius: 8px 8px 0 0;
   transition: all 0.2s;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .tab:hover {
   background: rgba(255, 255, 255, 0.03);
-  color: #a3a3a3;
 }
 
 .tab.active {
@@ -1156,19 +2156,13 @@ onUnmounted(() => {
   border-bottom: 2px solid #3b82f6;
 }
 
-/* Tab Content */
 .tab-content {
   flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;
 }
 
 .tab-content::-webkit-scrollbar {
   width: 6px;
-}
-
-.tab-content::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 .tab-content::-webkit-scrollbar-thumb {
@@ -1176,11 +2170,6 @@ onUnmounted(() => {
   border-radius: 3px;
 }
 
-.tab-content::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-/* Panel Title */
 .panel-title {
   padding: 20px 20px 16px;
   display: flex;
@@ -1192,18 +2181,17 @@ onUnmounted(() => {
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-/* Layers Panel */
-.layers-panel {
+.layers-panel, .tools-panel, .legend-panel, .info-panel {
   display: flex;
   flex-direction: column;
 }
 
-.layer-group {
+.layer-group, .tool-group {
   padding: 16px 20px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.layer-group-header {
+.layer-group-header, .tool-group-title {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1212,7 +2200,6 @@ onUnmounted(() => {
   font-weight: 700;
   color: #a3a3a3;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .header-icon {
@@ -1238,7 +2225,6 @@ onUnmounted(() => {
 
 .layer-item:hover {
   background: rgba(31, 31, 31, 0.6);
-  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .layer-item.active {
@@ -1256,15 +2242,21 @@ onUnmounted(() => {
   color: #e5e5e5;
 }
 
-.layer-label input[type="checkbox"],
-.layer-label input[type="radio"] {
+.layer-label input {
   width: 18px;
   height: 18px;
   cursor: pointer;
   accent-color: #3b82f6;
 }
 
-.layer-info-btn {
+.layer-preview {
+  width: 32px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.layer-delete-btn {
   width: 28px;
   height: 28px;
   border: none;
@@ -1278,29 +2270,16 @@ onUnmounted(() => {
   transition: all 0.2s;
 }
 
-.layer-info-btn:hover {
-  background: rgba(59, 130, 246, 0.15);
-  color: #3b82f6;
+.layer-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
 }
 
-/* Tools Panel */
-.tools-panel {
-  display: flex;
-  flex-direction: column;
-}
-
-.tool-group {
-  padding: 16px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.tool-group-title {
-  margin-bottom: 12px;
+.empty-hint {
+  padding: 12px;
+  text-align: center;
   font-size: 13px;
-  font-weight: 700;
-  color: #a3a3a3;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: #737373;
 }
 
 .tool-btn {
@@ -1318,19 +2297,24 @@ onUnmounted(() => {
   transition: all 0.2s;
 }
 
-.tool-btn:last-child {
-  margin-bottom: 0;
-}
-
 .tool-btn:hover {
   background: rgba(31, 31, 31, 0.6);
-  border-color: rgba(255, 255, 255, 0.1);
   transform: translateX(2px);
 }
 
 .tool-btn.active {
   background: rgba(59, 130, 246, 0.15);
   border-color: rgba(59, 130, 246, 0.3);
+}
+
+.tool-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.tool-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .tool-icon {
@@ -1342,7 +2326,6 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   color: #3b82f6;
-  flex-shrink: 0;
 }
 
 .tool-content {
@@ -1353,7 +2336,6 @@ onUnmounted(() => {
 .tool-name {
   font-size: 14px;
   font-weight: 600;
-  margin-bottom: 2px;
 }
 
 .tool-desc {
@@ -1361,13 +2343,12 @@ onUnmounted(() => {
   color: #737373;
 }
 
-/* Measurements List */
-.measurements-list {
+.measurements-list, .features-list {
   padding: 16px 20px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.measurement-item {
+.measurement-item, .feature-item {
   padding: 10px 12px;
   margin-bottom: 8px;
   background: rgba(31, 31, 31, 0.4);
@@ -1378,17 +2359,15 @@ onUnmounted(() => {
   justify-content: space-between;
 }
 
-.measurement-info {
+.measurement-info, .feature-info {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.measurement-type {
+.measurement-type, .feature-type {
   font-size: 12px;
   color: #737373;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .measurement-value {
@@ -1397,7 +2376,12 @@ onUnmounted(() => {
   color: #3b82f6;
 }
 
-.measurement-delete {
+.feature-id {
+  font-size: 14px;
+  color: #a3a3a3;
+}
+
+.measurement-delete, .feature-delete {
   width: 28px;
   height: 28px;
   border: none;
@@ -1411,15 +2395,27 @@ onUnmounted(() => {
   transition: all 0.2s;
 }
 
-.measurement-delete:hover {
+.measurement-delete:hover, .feature-delete:hover {
   background: rgba(239, 68, 68, 0.15);
   color: #ef4444;
 }
 
-/* Legend Panel */
-.legend-panel {
-  display: flex;
-  flex-direction: column;
+.clear-measurements-btn {
+  width: 100%;
+  padding: 8px;
+  margin-top: 8px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 6px;
+  color: #ef4444;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clear-measurements-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
 }
 
 .legend-group {
@@ -1452,14 +2448,7 @@ onUnmounted(() => {
   width: 20px;
   height: 20px;
   border-radius: 4px;
-  flex-shrink: 0;
   border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* Info Panel */
-.info-panel {
-  display: flex;
-  flex-direction: column;
 }
 
 .feature-info {
@@ -1493,11 +2482,6 @@ onUnmounted(() => {
   display: flex;
   padding: 12px 14px;
   background: rgba(15, 15, 15, 0.6);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.property-row:last-child {
-  border-bottom: none;
 }
 
 .property-key {
@@ -1505,22 +2489,47 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: 700;
   color: #a3a3a3;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .property-value {
   flex: 1;
   font-size: 14px;
-  font-weight: 500;
   color: #e5e5e5;
 }
 
-/* Empty State */
+.info-stats {
+  padding: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.stats-title {
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #e5e5e5;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.stat-label {
+  font-size: 13px;
+  color: #a3a3a3;
+}
+
+.stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #3b82f6;
+}
+
 .empty-state {
   padding: 60px 24px;
   text-align: center;
-  color: #737373;
 }
 
 .empty-icon {
@@ -1530,19 +2539,12 @@ onUnmounted(() => {
 }
 
 .empty-state p {
-  margin: 0 0 8px 0;
   font-size: 15px;
   font-weight: 600;
   color: #a3a3a3;
+  margin-bottom: 8px;
 }
 
-.empty-hint {
-  font-size: 13px;
-  color: #737373;
-  font-weight: 400;
-}
-
-/* Map */
 .map-wrapper {
   flex: 1;
   position: relative;
@@ -1553,14 +2555,52 @@ onUnmounted(() => {
   height: 100%;
 }
 
-/* Hide default MapLibre controls */
-.map-container :deep(.maplibregl-ctrl-top-right),
-.map-container :deep(.maplibregl-ctrl-bottom-left),
-.map-container :deep(.maplibregl-ctrl-bottom-right) {
-  display: none !important;
+.active-tool-indicator {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 20, 20, 0.95);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 12px;
+  padding: 12px 20px;
+  z-index: 10;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
-/* Map Controls */
+.tool-indicator-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #3b82f6;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.tool-cancel {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.tool-cancel:hover {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+.tool-hint {
+  font-size: 12px;
+  color: #a3a3a3;
+  text-align: center;
+}
+
 .map-controls {
   position: absolute;
   top: 20px;
@@ -1580,7 +2620,6 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 6px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(20px);
 }
 
 .control-btn {
@@ -1594,31 +2633,12 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-}
-
-.control-btn::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.1) 100%);
-  border-radius: 8px;
-  opacity: 0;
-  transition: opacity 0.2s;
+  transition: all 0.2s;
 }
 
 .control-btn:hover {
   color: #3b82f6;
-  transform: scale(1.05);
-}
-
-.control-btn:hover::before {
-  opacity: 1;
-}
-
-.control-btn:active {
-  transform: scale(0.95);
+  background: rgba(59, 130, 246, 0.1);
 }
 
 .control-btn.active {
@@ -1626,7 +2646,6 @@ onUnmounted(() => {
   background: rgba(59, 130, 246, 0.15);
 }
 
-/* Coordinates Display */
 .coordinates-display {
   position: absolute;
   bottom: 20px;
@@ -1639,9 +2658,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 16px;
   font-size: 12px;
-  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+  font-family: monospace;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(20px);
   z-index: 10;
 }
 
@@ -1654,8 +2672,6 @@ onUnmounted(() => {
 .coord-label {
   color: #737373;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .coord-value {
@@ -1669,7 +2685,6 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.1);
 }
 
-/* Scale Control */
 .scale-control {
   position: absolute;
   bottom: 20px;
@@ -1683,7 +2698,6 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(20px);
   z-index: 10;
 }
 
@@ -1691,17 +2705,15 @@ onUnmounted(() => {
   height: 3px;
   background: #3b82f6;
   border-radius: 2px;
-  transition: width 0.3s;
 }
 
 .scale-text {
   font-size: 11px;
   color: #a3a3a3;
   font-weight: 600;
-  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+  font-family: monospace;
 }
 
-/* Loading Overlay */
 .loading-overlay {
   position: absolute;
   inset: 0;
@@ -1712,7 +2724,6 @@ onUnmounted(() => {
   justify-content: center;
   gap: 20px;
   z-index: 1000;
-  backdrop-filter: blur(10px);
 }
 
 .loading-spinner {
@@ -1728,13 +2739,29 @@ onUnmounted(() => {
   to { transform: rotate(360deg); }
 }
 
-.loading-overlay p {
-  font-size: 14px;
-  color: #a3a3a3;
+.notification-toast {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 20, 20, 0.95);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 10px;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #3b82f6;
   font-weight: 600;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
 }
 
-/* Modal */
+.notification-toast.error {
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -1743,12 +2770,11 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   z-index: 2000;
-  backdrop-filter: blur(8px);
 }
 
 .modal-content {
   width: 90%;
-  max-width: 500px;
+  max-width: 600px;
   background: #141414;
   border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: 16px;
@@ -1766,7 +2792,6 @@ onUnmounted(() => {
 }
 
 .modal-header h2 {
-  margin: 0;
   font-size: 20px;
   font-weight: 700;
   color: #e5e5e5;
@@ -1788,7 +2813,6 @@ onUnmounted(() => {
 
 .modal-close:hover {
   background: rgba(255, 255, 255, 0.05);
-  color: #e5e5e5;
 }
 
 .modal-body {
@@ -1801,21 +2825,16 @@ onUnmounted(() => {
   margin-bottom: 24px;
 }
 
-.help-section:last-child {
-  margin-bottom: 0;
-}
-
 .help-section h3 {
-  margin: 0 0 12px 0;
+  margin-bottom: 12px;
   font-size: 16px;
   font-weight: 700;
   color: #3b82f6;
 }
 
 .help-section ul {
-  margin: 0;
-  padding-left: 20px;
   list-style: none;
+  padding: 0;
 }
 
 .help-section li {
@@ -1832,10 +2851,8 @@ onUnmounted(() => {
   position: absolute;
   left: 0;
   color: #3b82f6;
-  font-weight: bold;
 }
 
-/* Transitions */
 .fade-enter-active, .fade-leave-active {
   transition: opacity 0.2s;
 }
@@ -1849,12 +2866,20 @@ onUnmounted(() => {
 }
 
 .slide-fade-leave-active {
-  transition: all 0.2s cubic-bezier(1, 0.5, 0.8, 1);
+  transition: all 0.2s;
 }
 
-.slide-fade-enter-from,
-.slide-fade-leave-to {
+.slide-fade-enter-from, .slide-fade-leave-to {
   transform: translateY(-10px);
+  opacity: 0;
+}
+
+.slide-up-enter-active, .slide-up-leave-active {
+  transition: all 0.3s;
+}
+
+.slide-up-enter-from, .slide-up-leave-to {
+  transform: translateY(20px);
   opacity: 0;
 }
 
@@ -1866,34 +2891,17 @@ onUnmounted(() => {
   opacity: 0;
 }
 
-.modal-enter-active .modal-content,
-.modal-leave-active .modal-content {
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.modal-enter-from .modal-content,
-.modal-leave-to .modal-content {
-  transform: scale(0.9);
-}
-
-/* Responsive */
 @media (max-width: 768px) {
   .gis-sidebar {
-    width: 280px;
+    width: 300px;
   }
   
   .sidebar-toggle-external {
-    left: 280px;
+    left: 300px;
   }
   
   .logo-text p {
     display: none;
-  }
-  
-  .coordinates-display {
-    font-size: 10px;
-    padding: 8px 12px;
-    gap: 12px;
   }
 }
 </style>
