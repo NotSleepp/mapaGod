@@ -1,0 +1,6 @@
+:root {
+  --config-blur: 5px;
+}
+.bajos-recursos {
+  --config-blur: none;
+}
