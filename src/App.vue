@@ -628,7 +628,7 @@ const drawnFeatures = ref([])
 const selectedFeature = ref(null)
 const showHelp = ref(false)
 const isLoading = ref(true)
-const show3D = ref(false)
+const show3D = ref(true)
 const showTerrain = ref(false)
 const currentCoords = ref({ lat: '-36.5806', lng: '-56.6917' })
 const currentZoom = ref(13)
@@ -688,6 +688,15 @@ const baseLayers = [
     preview: 'linear-gradient(135deg, #f2efe9 0%, #c8c4b7 100%)'
   }
 ]
+
+// Límites de zoom por tema (a 10/17/2025)
+const BASE_LAYER_ZOOM_LIMITS = {
+  streets: { min: 0, max: 20 },
+  dark: { min: 0, max: 20 },
+  terrain: { min: 0, max: 20 },
+  osm: { min: 0, max: 19 },
+  satellite: { min: 0, max: 19 }
+}
 
 // Methods
 const showNotification = (message, type = 'success') => {
@@ -785,13 +794,16 @@ const changeBaseLayer = (layerId) => {
             'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
           ],
           tileSize: 256,
-          attribution: 'Esri, DigitalGlobe, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community'
+          attribution: 'Esri, DigitalGlobe, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community',
+          maxzoom: 19
         }
       },
       layers: [{
         id: 'satellite',
         type: 'raster',
-        source: 'satellite'
+        source: 'satellite',
+        minzoom: 0,
+        maxzoom: 19
       }]
     })
   } else {
@@ -799,6 +811,9 @@ const changeBaseLayer = (layerId) => {
   }
   
   map.value.once('styledata', () => {
+    const limits = BASE_LAYER_ZOOM_LIMITS[layerId] || { min: 0, max: 20 }
+    map.value.setMinZoom(limits.min)
+    map.value.setMaxZoom(limits.max)
     isLoading.value = false
     reloadAllLayers()
     showNotification(`Estilo cambiado a ${layer.name}`)
@@ -1696,8 +1711,8 @@ const resetView = () => {
     map.value.flyTo({
       center: [-56.6917, -36.5806],
       zoom: 13,
-      pitch: 0,
-      bearing: 0,
+      pitch: 60,
+      bearing: -45,
       duration: 1500
     })
   }
@@ -1844,8 +1859,10 @@ onMounted(() => {
     },
     center: [-56.6917, -36.5806],
     zoom: 13,
-    pitch: 0,
-    bearing: -90, // Rotación de 90 grados
+    minZoom: 0,
+    maxZoom: 19,
+    pitch: 60,
+    bearing: -140, // Diagonal izquierda (~45°)
     attributionControl: false,
     logoPosition: 'bottom-right'
   })
@@ -2919,6 +2936,140 @@ onUnmounted(() => {
   
   .logo-text p {
     display: none;
+  }
+}
+/* === Responsive: layout & controls === */
+
+/* Full height container adjustments */
+html, body, #app {
+  height: 100%;
+}
+
+.gis-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.gis-main {
+  min-height: calc(100vh - 56px);
+}
+
+/* Tablet down (<= 1200px) */
+@media (max-width: 1200px) {
+  .gis-sidebar { width: 320px; }
+  .sidebar-toggle-external { left: 320px; }
+  .map-controls { gap: 12px; }
+  .control-btn { width: 40px; height: 40px; }
+}
+
+/* Tablet (<= 1024px) */
+@media (max-width: 1024px) {
+  .gis-sidebar { width: 300px; }
+  .sidebar-toggle-external { left: 300px; }
+  .panel-title { font-size: 15px; }
+  .tool-name { font-size: 13px; }
+  .tool-desc { font-size: 11px; }
+}
+
+/* Mobile (<= 768px) — off-canvas sidebar, compact HUD */
+@media (max-width: 768px) {
+  .gis-main { overflow: visible; }
+  .map-wrapper { height: 100%; }
+  .map-container { height: 100%; }
+
+  .gis-sidebar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 85vw;
+    max-width: 360px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    z-index: 1500;
+  }
+
+  .gis-sidebar.collapsed {
+    width: 85vw;
+    transform: translateX(-100%);
+    border-right: none;
+  }
+
+  .sidebar-toggle-external {
+    top: 12px;
+    left: 12px;
+    transform: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    z-index: 2001;
+  }
+
+  .sidebar-toggle-external.collapsed {
+    left: 12px;
+  }
+
+  .map-controls {
+    top: auto;
+    bottom: 16px;
+    right: 12px;
+    gap: 10px;
+  }
+
+  .control-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .active-tool-indicator {
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    transform: none;
+    padding: 10px 14px;
+  }
+
+  .coordinates-display {
+    left: 12px;
+    bottom: 12px;
+    padding: 8px 12px;
+    gap: 8px;
+    font-size: 11px;
+  }
+
+  .scale-control {
+    left: 12px;
+    bottom: 56px;
+  }
+
+  .search-results {
+    max-height: 40vh;
+  }
+
+  .logo-text p {
+    display: none;
+  }
+}
+
+/* Small mobile (<= 480px) — tighter spacing */
+@media (max-width: 480px) {
+  .gis-sidebar {
+    width: 90vw;
+    max-width: 320px;
+  }
+
+  .map-controls { gap: 8px; }
+  .control-btn { width: 32px; height: 32px; }
+
+  .coord-separator { display: none; }
+}
+
+/* Safe-area support for notches */
+@supports (padding: max(0px)) {
+  .map-controls,
+  .coordinates-display,
+  .scale-control {
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
   }
 }
 </style>
