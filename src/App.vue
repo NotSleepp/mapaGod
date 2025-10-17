@@ -10,7 +10,7 @@
             </svg>
           </div>
           <div class="logo-text">
-            <h1>GIS Pro</h1>
+            <h1>GIS</h1>
             <p>Sistema Avanzado de Información Geográfica</p>
           </div>
         </div>
@@ -2703,8 +2703,8 @@ onUnmounted(() => {
 
 .scale-control {
   position: absolute;
-  bottom: 20px;
-  right: 20px;
+  bottom: 19px;
+  left: 350px;
   background: rgba(20, 20, 20, 0.9);
   border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: 8px;
