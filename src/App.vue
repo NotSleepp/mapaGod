@@ -694,8 +694,8 @@ const BASE_LAYER_ZOOM_LIMITS = {
   streets: { min: 0, max: 20 },
   dark: { min: 0, max: 20 },
   terrain: { min: 0, max: 20 },
-  osm: { min: 0, max: 19 },
-  satellite: { min: 0, max: 19 }
+  osm: { min: 0, max: 18 },
+  satellite: { min: 0, max: 16 }
 }
 
 // Methods
@@ -1860,7 +1860,7 @@ onMounted(() => {
     center: [-56.6917, -36.5806],
     zoom: 13,
     minZoom: 0,
-    maxZoom: 19,
+    maxZoom: 18,
     pitch: 60,
     bearing: -140, // Diagonal izquierda (~45°)
     attributionControl: false,
