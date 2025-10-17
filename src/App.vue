@@ -2015,7 +2015,6 @@ onUnmounted(() => {
 }
 
 .sidebar-toggle-external:hover {
-  background: rgba(59, 130, 246, 0.15);
   color: #3b82f6;
 }
 
@@ -2703,8 +2702,8 @@ onUnmounted(() => {
 
 .scale-control {
   position: absolute;
-  bottom: 19px;
-  left: 350px;
+  bottom: 65px;
+  left: 20px;
   background: rgba(20, 20, 20, 0.9);
   border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: 8px;
@@ -2716,6 +2715,8 @@ onUnmounted(() => {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   z-index: 10;
 }
+
+
 
 .scale-line {
   height: 3px;
