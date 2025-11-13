@@ -1,7 +1,7 @@
 <template>
   <div class="gis-container">
     <!-- Header -->
-    <header class="gis-header">
+    <header v-if="false" class="gis-header">
       <div class="header-content">
         <div class="logo-section">
           <div class="logo-icon">
@@ -29,13 +29,13 @@
     <!-- Main Content -->
     <div class="gis-main">
       <!-- Sidebar Toggle Button -->
-      <button class="sidebar-toggle-external" @click="sidebarCollapsed = !sidebarCollapsed" :class="{ collapsed: sidebarCollapsed }">
+      <button v-if="false" class="sidebar-toggle-external" @click="sidebarCollapsed = !sidebarCollapsed" :class="{ collapsed: sidebarCollapsed }">
         <ChevronLeft v-if="!sidebarCollapsed" :size="20" />
         <ChevronRight v-else :size="20" />
       </button>
 
       <!-- Sidebar -->
-      <aside class="gis-sidebar" :class="{ collapsed: sidebarCollapsed }">
+      <aside v-if="false" class="gis-sidebar" :class="{ collapsed: sidebarCollapsed }">
         <div v-if="!sidebarCollapsed" class="sidebar-content">
           <!-- Search -->
           <div class="search-section">
@@ -454,6 +454,48 @@
       <div class="map-wrapper">
         <div ref="mapContainer" class="map-container"></div>
 
+        <div class="floating-search">
+           <div class="floating-search-row">
+             <div class="search-input-wrapper">
+               <Search :size="18" class="search-icon" />
+               <input 
+                 v-model="searchQuery" 
+                 type="text" 
+                 placeholder="Buscar dirección, lugar..." 
+                 class="search-input"
+                 @keyup.enter="performSearch"
+               />
+               <button v-if="searchQuery" @click="clearSearch" class="clear-btn">
+                 <X :size="16" />
+               </button>
+             </div>
+             <div class="filter-chips">
+               <button class="chip" :class="{ active: filterCalles }" @click="filterCalles = !filterCalles">Calles</button>
+               <button class="chip" :class="{ active: filterManzanas }" @click="filterManzanas = !filterManzanas">Manzanas</button>
+               <button class="chip" :class="{ active: filterParcelas }" @click="filterParcelas = !filterParcelas">Parcelas</button>
+             </div>
+           </div>
+           <transition name="slide-fade">
+             <div v-if="searchResults.length > 0" class="search-results floating-results">
+               <div 
+                 v-for="result in searchResults" 
+                 :key="result.id"
+                 class="search-result-item"
+                 @click="selectSearchResult(result)"
+               >
+                 <div class="result-icon">
+                   <MapPin :size="16" />
+                 </div>
+                 <div class="result-info">
+                   <div class="result-name">{{ result.name }}</div>
+                   <div class="result-address">{{ result.address }}</div>
+                 </div>
+                 <ChevronRight :size="16" class="result-arrow" />
+               </div>
+             </div>
+           </transition>
+         </div>
+
         <!-- Active Tool Indicator -->
         <transition name="fade">
           <div v-if="activeTool" class="active-tool-indicator">
@@ -483,6 +525,9 @@
             <button class="control-btn" @click="locateUser" title="Mi ubicación">
               <Navigation :size="20" />
             </button>
+            <button class="control-btn" @click="toggleFullscreen" title="Pantalla completa">
+              <Maximize2 :size="20" />
+            </button>
           </div>
 
           <div class="control-group">
@@ -508,6 +553,23 @@
             <button class="control-btn" @click="shareMap" title="Compartir">
               <Share2 :size="20" />
             </button>
+          </div>
+
+          <div class="style-selector" @mouseenter="openStyleOptions" @mouseleave="closeStyleOptions">
+            <button class="control-btn" title="Estilo de mapa" @mouseenter="openStyleOptions">
+              <Layers :size="20" />
+            </button>
+            <div class="style-options" :class="{ open: styleOptionsOpen }" @mouseenter="openStyleOptions" @mouseleave="closeStyleOptions">
+              <button 
+                v-for="layer in baseLayers" 
+                :key="layer.id" 
+                class="style-chip" 
+                :class="{ active: activeBaseLayer === layer.id }" 
+                @click="changeBaseLayer(layer.id)"
+              >
+                {{ layer.name }}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -605,7 +667,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { 
@@ -639,6 +701,28 @@ const activeBaseLayer = ref('osm')
 const fileInput = ref(null)
 const importedLayers = ref([])
 const notification = ref(null)
+const filterCalles = ref(true)
+const filterManzanas = ref(true)
+const filterParcelas = ref(false)
+
+const styleOptionsOpen = ref(false)
+let styleOptionsCloseTimer = null
+const openStyleOptions = () => {
+  if (styleOptionsCloseTimer) { clearTimeout(styleOptionsCloseTimer) }
+  styleOptionsOpen.value = true
+}
+const closeStyleOptions = () => {
+  if (styleOptionsCloseTimer) { clearTimeout(styleOptionsCloseTimer) }
+  styleOptionsCloseTimer = setTimeout(() => { styleOptionsOpen.value = false }, 200)
+}
+
+ // Persistencia de selección en localStorage
+ watch(activeBaseLayer, (val) => {
+   try { localStorage.setItem('activeBaseLayer', val) } catch {}
+ })
+ watch([filterCalles, filterManzanas, filterParcelas], ([c, m, p]) => {
+   try { localStorage.setItem('filters', JSON.stringify({ c, m, p })) } catch {}
+ })
 
 // Drawing state
 let drawingPoints = []
@@ -762,6 +846,7 @@ const changeBaseLayer = (layerId) => {
   const layer = baseLayers.find(l => l.id === layerId)
   if (!layer || !map.value) return
   
+  activeBaseLayer.value = layerId
   isLoading.value = true
   
   if (layerId === 'osm') {
@@ -1834,6 +1919,18 @@ const getRoundNum = (num) => {
 // Initialize map
 onMounted(() => {
   isLoading.value = true
+
+  try {
+    const savedBaseLayer = localStorage.getItem('activeBaseLayer')
+    if (savedBaseLayer) activeBaseLayer.value = savedBaseLayer
+    const savedFiltersStr = localStorage.getItem('filters')
+    if (savedFiltersStr) {
+      const f = JSON.parse(savedFiltersStr)
+      filterCalles.value = !!f.c
+      filterManzanas.value = !!f.m
+      filterParcelas.value = !!f.p
+    }
+  } catch {}
   
   // <CHANGE> Configurar mapa con OpenStreetMap y rotación de 90 grados
   map.value = new maplibregl.Map({
@@ -1891,6 +1988,9 @@ onMounted(() => {
     isLoading.value = false
     addDrawnFeaturesSource()
     updateScale()
+    if (activeBaseLayer.value && activeBaseLayer.value !== 'osm') {
+      changeBaseLayer(activeBaseLayer.value)
+    }
     showNotification('Mapa cargado correctamente')
   })
 
@@ -3071,5 +3171,113 @@ html, body, #app {
   .scale-control {
     padding-bottom: max(0px, env(safe-area-inset-bottom));
   }
+}
+
+.floating-search {
+   position: absolute;
+   top: 20px;
+   left: 20px;
+   width: 520px;
+   z-index: 12;
+ }
+ .floating-search-row {
+   display: flex;
+   align-items: center;
+   gap: 8px;
+ }
+
+.floating-results {
+  position: relative;
+}
+
+.filter-chips {
+  display: flex;
+  gap: 8px;
+  margin-top: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  max-width: 240px;
+  overflow-x: auto;
+}
+
+.chip {
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(31,31,31,0.7);
+  color: #e5e5e5;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chip:hover {
+  background: rgba(59,130,246,0.12);
+  color: #3b82f6;
+}
+
+.chip.active {
+  background: rgba(59,130,246,0.18);
+  color: #3b82f6;
+  border-color: rgba(59,130,246,0.35);
+}
+
+.style-selector {
+  position: relative;
+  background: rgba(20, 20, 20, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  overflow: visible;
+}
+
+.style-options {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 12px);
+  left: auto;
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transform: translateY(-50%);
+  pointer-events: none;
+  transition: all 0.2s ease;
+  z-index: 20;
+}
+
+.style-options.open {
+  opacity: 1;
+  transform: translateY(-50%);
+  pointer-events: auto;
+}
+
+.style-chip {
+  padding: 8px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(20,20,20,0.9);
+  color: #a3a3a3;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.style-chip:hover {
+  color: #3b82f6;
+  border-color: rgba(59,130,246,0.35);
+  background: rgba(59,130,246,0.1);
+}
+
+.style-chip.active {
+  color: #3b82f6;
+  border-color: rgba(59,130,246,0.35);
+  background: rgba(59,130,246,0.15);
+}
+
+.gis-main {
+  min-height: 100vh;
 }
 </style>
