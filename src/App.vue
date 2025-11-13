@@ -470,9 +470,9 @@
                </button>
              </div>
              <div class="filter-chips">
-               <button class="chip" :class="{ active: filterCalles }" @click="filterCalles = !filterCalles">Calles</button>
-               <button class="chip" :class="{ active: filterManzanas }" @click="filterManzanas = !filterManzanas">Manzanas</button>
-               <button class="chip" :class="{ active: filterParcelas }" @click="filterParcelas = !filterParcelas">Parcelas</button>
+               <button class="style-chip" :class="{ active: filterCalles }" @click="filterCalles = !filterCalles">Calles</button>
+               <button class="style-chip" :class="{ active: filterManzanas }" @click="filterManzanas = !filterManzanas">Manzanas</button>
+               <button class="style-chip" :class="{ active: filterParcelas }" @click="filterParcelas = !filterParcelas">Parcelas</button>
              </div>
            </div>
            <transition name="slide-fade">
@@ -3255,26 +3255,26 @@ html, body, #app {
 }
 
 .style-chip {
-  padding: 8px 10px;
-  font-size: 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: rgba(20,20,20,0.9);
-  color: #a3a3a3;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 10px;
+  border: 1px solid #2a2a2a;
+  background: #131313;
+  color: #eaeaea;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .style-chip:hover {
   color: #3b82f6;
-  border-color: rgba(59,130,246,0.35);
-  background: rgba(59,130,246,0.1);
+  border-color: #3b82f6;
+  background: #0f172a;
 }
 
 .style-chip.active {
   color: #3b82f6;
-  border-color: rgba(59,130,246,0.35);
-  background: rgba(59,130,246,0.15);
+  border-color: #3b82f6;
+  background: #0f172a;
 }
 
 .gis-main {
